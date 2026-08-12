@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Shape</title>
+  <meta name="description" content="Treino e dieta — plano pessoal">
+  <meta name="theme-color" content="#0B0D0C">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Shape">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-row">
+      <h1>Shape</h1>
+      <span id="phase-chip" class="chip chip-phase"></span>
+    </div>
+    <p id="topbar-date" class="topbar-date"></p>
+  </header>
+
+  <main id="main">
+    <section id="view-hoje" class="view"></section>
+    <section id="view-semana" class="view" hidden></section>
+    <section id="view-treino" class="view" hidden></section>
+    <section id="view-dieta" class="view" hidden></section>
+    <section id="view-checkin" class="view" hidden></section>
+  </main>
+
+  <nav class="tabbar" role="tablist">
+    <button class="tab active" data-view="hoje" role="tab" aria-selected="true">
+      <svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9.5 21v-6h5v6"/></svg>
+      <span>Hoje</span>
+    </button>
+    <button class="tab" data-view="semana" role="tab" aria-selected="false">
+      <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
+      <span>Semana</span>
+    </button>
+    <button class="tab" data-view="treino" role="tab" aria-selected="false">
+      <svg viewBox="0 0 24 24"><path d="M7.5 12h9"/><path d="M5 8.5v7M8.5 7v10M15.5 7v10M19 8.5v7"/></svg>
+      <span>Treino</span>
+    </button>
+    <button class="tab" data-view="dieta" role="tab" aria-selected="false">
+      <svg viewBox="0 0 24 24"><path d="M7 3v7a2 2 0 0 0 2 2h0V3M9 12v9"/><path d="M16 3c-1.7 0-3 2-3 4.5S14.3 12 16 12v9"/><path d="M16 3v18"/></svg>
+      <span>Dieta</span>
+    </button>
+    <button class="tab" data-view="checkin" role="tab" aria-selected="false">
+      <svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/><path d="M21 7v5h-5"/></svg>
+      <span>Check-in</span>
+    </button>
+  </nav>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
