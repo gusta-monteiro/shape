@@ -1,5 +1,5 @@
 /* Service worker — app shell offline. Suba a versão a cada deploy. */
-const VERSION = 'shape-v2';
+const VERSION = 'shape-v3';
 const CORE = [
   './',
   './index.html',
