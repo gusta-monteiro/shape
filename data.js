@@ -73,7 +73,9 @@ const DATA = {
     ['Trabalho', 'séries válidas — falha muscular (ou próximo) dentro do limite de repetições, mantendo padrão mecânico e cadência.'],
   ],
 
-  // Descanso ativo (qui/dom): abdômen + panturrilha alternando protocolos A/B + antebraço.
+  // Descanso ativo (qui/dom): abdômen (2x/semana) + antebraço + panturrilha, sempre alternando
+  // protocolos A/B. Panturrilha é 3–4x/semana (fonte: PDF) — o app também oferece o protocolo
+  // como opcional pós-treino nos dias de treino (ver calfProtocol em app.js).
   restDay: {
     rest: '30–45s',
     abs: {
@@ -92,7 +94,7 @@ const DATA = {
     calves: {
       A: [
         { name: 'Panturrilha em Pé Máquina', sets: '6 × 8–12 (prog.)', note: '2" de pico embaixo' },
-        { name: 'Panturrilha + Tibial Anterior Leg Horizontal', pair: true, sets: 'Pantu: 4 × 10–15 (2" pico) · Tibial: 4 × 10–15' },
+        { name: 'Panturrilha + Tibial Anterior Leg Horizontal', pair: true, sets: 'Pantu: 4 × 10–15 (prog.) (2" pico) · Tibial: 4 × 10–15 (prog.)' },
       ],
       B: [
         { name: 'Gêmeos Sentado', sets: '6 × 8–12 (prog.)', note: '2" de pico' },

@@ -47,6 +47,13 @@ function restProtocol(date) {
   return count % 2 === 0 ? 'A' : 'B';
 }
 
+/* Panturrilha (fonte: PDF) é 3–4x/semana, pós-treino OU descanso, alternando protocolos —
+   por isso roda numa contagem própria que avança todo dia (não só nos de descanso). */
+function calfProtocol(date) {
+  const diffDays = Math.round((date - ANCHOR_REST) / 86400000);
+  return ((diffDays % 2) + 2) % 2 === 0 ? 'A' : 'B';
+}
+
 function phaseFor(date) {
   const k = dayKey(date);
   for (const p of DATA.phases) if (k >= p.start && k <= p.end) return p;
@@ -67,7 +74,7 @@ const store = {
   get(k, fb) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fb; } catch { return fb; } },
   set(k, v) { localStorage.setItem(k, JSON.stringify(v)); },
 };
-const dayState = (key) => store.get('shape:day:' + key, { meals: [false, false, false, false, false], workout: false, extras: false });
+const dayState = (key) => store.get('shape:day:' + key, { meals: [false, false, false, false, false], workout: false, extras: false, calf: false });
 const saveDayState = (key, s) => store.set('shape:day:' + key, s);
 const cardioKey = (d) => 'shape:cardio:' + dayKey(mondayOf(d));
 const getWeights = () => store.get('shape:weights', []);
@@ -97,7 +104,9 @@ async function putPhoto(rec) {
   return new Promise((res, rej) => {
     const tx = d.transaction('photos', 'readwrite');
     tx.objectStore('photos').put(rec);
-    tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+    // QuotaExceededError (storage cheio) normalmente só dispara 'abort' na transação, não
+    // 'error' — sem esse handler a Promise nunca resolve nem rejeita.
+    tx.oncomplete = res; tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error || new Error('transação abortada'));
   });
 }
 async function allPhotos() {
@@ -112,7 +121,7 @@ async function deletePhoto(id) {
   return new Promise((res, rej) => {
     const tx = d.transaction('photos', 'readwrite');
     tx.objectStore('photos').delete(id);
-    tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+    tx.oncomplete = res; tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error || new Error('transação abortada'));
   });
 }
 function compressImage(file, maxDim = 1280) {
@@ -181,14 +190,38 @@ function renderDayPlan(container, date) {
       showWorkoutInTab(letter);
     });
     container.appendChild(card);
+
+    // panturrilha pós-treino: opcional, 3-4x/semana no total somando com os dias de descanso
+    const cproto = calfProtocol(date);
+    const calfCard = h(`<div class="card">
+      <div class="hero">
+        <div class="hero-letter rest" style="font-size:20px">🦵</div>
+        <div class="hero-info">
+          <div class="t">Panturrilha pós-treino</div>
+          <div class="s">Opcional · protocolo ${cproto} · alterne com os dias de descanso (3–4x/semana no total)</div>
+        </div>
+        <button class="bigcheck hero-check ${state.calf ? 'on' : ''}" aria-label="Marcar panturrilha como feita">${CHECK_SVG}</button>
+      </div>
+    </div>`);
+    $('.hero-check', calfCard).addEventListener('click', (e) => {
+      state.calf = !state.calf; saveDayState(key, state);
+      e.currentTarget.classList.toggle('on', state.calf);
+      if (state.calf) toast('Panturrilha concluída ✔');
+    });
+    calfCard.addEventListener('click', (e) => {
+      if (e.target.closest('.bigcheck')) return;
+      showWorkoutInTab('calf-' + cproto);
+    });
+    container.appendChild(calfCard);
   } else {
     const proto = restProtocol(date);
+    const cproto = calfProtocol(date);
     const card = h(`<div class="card">
       <div class="hero">
         <div class="hero-letter rest">🧘</div>
         <div class="hero-info">
           <div class="t">Descanso Ativo</div>
-          <div class="s">Abs ${proto} · Panturrilha ${proto} · Antebraço</div>
+          <div class="s">Abs ${proto} · Panturrilha ${cproto} · Antebraço</div>
         </div>
         <button class="bigcheck hero-check ${state.extras ? 'on' : ''}" aria-label="Marcar como feito">${CHECK_SVG}</button>
       </div>
@@ -219,7 +252,8 @@ function renderDayPlan(container, date) {
   // cardio da semana (só no dia atual, para não confundir)
   if (isToday) {
     const ck = cardioKey(date);
-    const cardio = store.get(ck, { bike: 0, escada: 0 });
+    const cardioRaw = store.get(ck, { bike: 0, escada: 0 });
+    const cardio = { bike: Number(cardioRaw.bike) || 0, escada: Number(cardioRaw.escada) || 0 };
     const targets = parseCardioTargets(info.guidance.cardio);
     const card = h(`<div class="card">
       <h2>Cardio da semana</h2>
@@ -382,21 +416,33 @@ function renderTreino() {
   }
 
   const proto = restToday ? restProtocol(today()) : null;
-  view.appendChild(h('<p class="section-label">Descanso ativo (qui/dom)</p>'));
+  const cproto = calfProtocol(today());
   const rd = DATA.restDay;
-  for (const [key, label, obj] of [['abs', 'Abdômen', rd.abs], ['calves', 'Panturrilha', rd.calves]]) {
-    for (const P of ['A', 'B']) {
-      const isOpen = restToday && proto === P;
-      view.appendChild(h(`<details class="acc" ${isOpen ? 'open' : ''}>
-        <summary>
-          <span class="acc-letter rest">${P}</span>
-          <span>${label} — Protocolo ${P} <div class="acc-sub">descanso ${rd.rest}</div></span>
-          <span class="chev">›</span>
-        </summary>
-        <div class="acc-body">${obj[P].map(exerciseHTML).join('')}</div>
-      </details>`));
-    }
+
+  view.appendChild(h('<p class="section-label">Abdômen — descanso ativo (qui/dom, 2x/semana)</p>'));
+  for (const P of ['A', 'B']) {
+    view.appendChild(h(`<details class="acc" ${restToday && proto === P ? 'open' : ''}>
+      <summary>
+        <span class="acc-letter rest">${P}</span>
+        <span>Abdômen — Protocolo ${P} <div class="acc-sub">descanso ${rd.rest}</div></span>
+        <span class="chev">›</span>
+      </summary>
+      <div class="acc-body">${rd.abs[P].map(exerciseHTML).join('')}</div>
+    </details>`));
   }
+
+  view.appendChild(h('<p class="section-label">Panturrilha — pós-treino ou descanso (3–4x/semana)</p>'));
+  for (const P of ['A', 'B']) {
+    view.appendChild(h(`<details class="acc" id="calf-${P}" ${cproto === P ? 'open' : ''}>
+      <summary>
+        <span class="acc-letter rest">${P}</span>
+        <span>Panturrilha — Protocolo ${P} <div class="acc-sub">descanso ${rd.rest} · alterne entre os protocolos</div></span>
+        <span class="chev">›</span>
+      </summary>
+      <div class="acc-body">${rd.calves[P].map(exerciseHTML).join('')}</div>
+    </details>`));
+  }
+
   view.appendChild(h(`<details class="acc" ${restToday ? 'open' : ''}>
     <summary>
       <span class="acc-letter rest">✚</span>
@@ -425,10 +471,14 @@ function showWorkoutInTab(letterOrRest) {
     $$('details.acc', view).forEach(d => { d.open = false; });
     if (letterOrRest === 'rest') {
       const proto = restProtocol(today()) || 'A';
+      const cproto = calfProtocol(today());
       $$('details.acc', view).forEach(d => {
         const s = $('summary', d).textContent;
-        if (s.includes(`Protocolo ${proto}`) || s.includes('Antebraço')) d.open = true;
+        if (s.includes(`Abdômen — Protocolo ${proto}`) || d.id === `calf-${cproto}` || s.includes('Antebraço')) d.open = true;
       });
+    } else if (letterOrRest.startsWith('calf-')) {
+      const target = $('#' + letterOrRest, view);
+      if (target) { target.open = true; target.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
     } else {
       const target = $$('details.acc', view).find(d => $('.acc-letter', d).textContent.trim() === letterOrRest);
       if (target) { target.open = true; target.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
@@ -511,13 +561,24 @@ function renderDieta() {
 /* ---------------- CHECK-IN ---------------- */
 const POSES = ['frente', 'lado', 'costas'];
 
+// URLs de blob criadas para as fotos do check-in — revogadas a cada re-render para não
+// vazar memória (renderCheckin roda de novo a cada foto salva/excluída, peso salvo, etc).
+let checkinObjectURLs = [];
+function trackObjectURL(blob) {
+  const url = URL.createObjectURL(blob);
+  checkinObjectURLs.push(url);
+  return url;
+}
+
 function renderCheckin() {
   const view = $('#view-checkin');
   view.innerHTML = '';
+  checkinObjectURLs.forEach(u => URL.revokeObjectURL(u));
+  checkinObjectURLs = [];
   const weights = getWeights();
   const goal = DATA.config.goal;
   const last = weights[weights.length - 1];
-  const current = last ? last.kg : goal.startKg;
+  const current = last ? (Number(last.kg) || goal.startKg) : goal.startKg;
   const lost = goal.startKg - current;
   const toGo = current - goal.targetKg;
 
@@ -577,7 +638,7 @@ function renderCheckin() {
       const diff = prev ? w.kg - prev.kg : 0;
       const row = h(`<div class="w-row">
         <span class="d">${fmtShort(parseISO(w.d))}</span>
-        <span class="kg">${String(w.kg).replace('.', ',')} kg</span>
+        <span class="kg">${esc(String(Number(w.kg) || 0).replace('.', ','))} kg</span>
         <span class="diff ${diff < 0 ? 'down' : diff > 0 ? 'up' : ''}">${prev ? (diff > 0 ? '+' : '') + String(diff.toFixed(1)).replace('.', ',') : ''}</span>
         <button class="del" aria-label="Excluir">✕</button>
       </div>`);
@@ -635,7 +696,7 @@ async function loadPhotosUI(photosCard, galleryCard) {
     const pose = slot.dataset.pose;
     const mine = photos.filter(p => p.week === weekKey && p.pose === pose);
     if (mine.length) {
-      const url = URL.createObjectURL(mine[0].blob);
+      const url = trackObjectURL(mine[0].blob);
       slot.insertBefore(h(`<img src="${url}" alt="${pose}">`), slot.firstChild);
       $('.pose-tag', slot).hidden = false;
     }
@@ -673,7 +734,7 @@ async function loadPhotosUI(photosCard, galleryCard) {
     [first, lastW].forEach((set, ci) => {
       POSES.forEach(pose => {
         const p = set.find(x => x.pose === pose);
-        if (p) cols[ci].appendChild(h(`<div class="ph"><img src="${URL.createObjectURL(p.blob)}" alt="${pose}"></div>`));
+        if (p) cols[ci].appendChild(h(`<div class="ph"><img src="${trackObjectURL(p.blob)}" alt="${esc(pose)}"></div>`));
       });
     });
     gallery.appendChild(cmp);
@@ -685,7 +746,7 @@ async function loadPhotosUI(photosCard, galleryCard) {
       <div class="gallery-imgs"></div>
     </div>`);
     byWeek[week].sort((a, b) => POSES.indexOf(a.pose) - POSES.indexOf(b.pose)).forEach(p => {
-      const ph = h(`<div class="ph"><img src="${URL.createObjectURL(p.blob)}" alt="${p.pose}"></div>`);
+      const ph = h(`<div class="ph"><img src="${trackObjectURL(p.blob)}" alt="${esc(p.pose)}"></div>`);
       let pressTimer = null;
       ph.addEventListener('touchstart', () => {
         pressTimer = setTimeout(async () => {
@@ -696,6 +757,7 @@ async function loadPhotosUI(photosCard, galleryCard) {
       }, { passive: true });
       ph.addEventListener('touchend', () => clearTimeout(pressTimer));
       ph.addEventListener('touchmove', () => clearTimeout(pressTimer));
+      ph.addEventListener('touchcancel', () => clearTimeout(pressTimer));
       ph.addEventListener('contextmenu', async (e) => {
         e.preventDefault();
         if (confirm(`Excluir foto (${p.pose})?`)) { await deletePhoto(p.id); renderCheckin(); }
@@ -711,7 +773,10 @@ function buildChart(weights) {
   const goal = DATA.config.goal;
   const W = 520, H = 240, PAD = { t: 14, r: 14, b: 26, l: 34 };
   const x0 = parseISO(goal.startDate).getTime();
-  const x1 = parseISO(goal.targetDate).getTime();
+  // o range cobre até a meta OU até o último peso registrado, o que for mais tarde —
+  // assim pesos lançados depois de 31/dez continuam aparecendo no gráfico.
+  const lastWeightT = weights.length ? Math.max(...weights.map(w => parseISO(w.d).getTime())) : 0;
+  const x1 = Math.max(parseISO(goal.targetDate).getTime(), lastWeightT, x0 + 86400000);
   const kgs = weights.map(w => w.kg).concat([goal.startKg, goal.targetKg]);
   const yMin = Math.floor(Math.min(...kgs) / 5) * 5 - 2;
   const yMax = Math.ceil(Math.max(...kgs) / 5) * 5 + 2;
@@ -723,11 +788,13 @@ function buildChart(weights) {
     grid += `<line x1="${PAD.l}" y1="${Y(kg)}" x2="${W - PAD.r}" y2="${Y(kg)}" stroke="#20262330" stroke-width="1"/>`;
     labels += `<text x="${PAD.l - 6}" y="${Y(kg) + 3.5}" text-anchor="end" font-size="10" fill="#6E7A74">${kg}</text>`;
   }
-  const months = [['set', 8], ['out', 9], ['nov', 10], ['dez', 11]];
-  months.forEach(([name, m]) => {
-    const t = new Date(2026, m, 1).getTime();
-    if (t > x0 && t < x1) labels += `<text x="${X(t)}" y="${H - 8}" text-anchor="middle" font-size="10" fill="#6E7A74">${name}</text>`;
-  });
+  const shortMonths = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+  const startD = new Date(x0), endD = new Date(x1);
+  for (let y = startD.getFullYear(), m = startD.getMonth(); y < endD.getFullYear() || (y === endD.getFullYear() && m <= endD.getMonth()); m++) {
+    if (m > 11) { m = 0; y++; }
+    const t = new Date(y, m, 1).getTime();
+    if (t > x0 && t < x1) labels += `<text x="${X(t)}" y="${H - 8}" text-anchor="middle" font-size="10" fill="#6E7A74">${shortMonths[m]}</text>`;
+  }
 
   const meta = `<line x1="${X(x0)}" y1="${Y(goal.startKg)}" x2="${X(x1)}" y2="${Y(goal.targetKg)}"
     stroke="#5A655F" stroke-width="1.5" stroke-dasharray="5 5"/>
@@ -740,8 +807,8 @@ function buildChart(weights) {
     pts.forEach(([px, py, w], i) => {
       const isLast = i === pts.length - 1;
       dots += `<circle cx="${px}" cy="${py}" r="${isLast ? 5 : 4}" fill="#A3E635" stroke="#0B0D0C" stroke-width="2"
-        data-d="${w.d}" data-kg="${w.kg}" style="cursor:pointer"/>`;
-      if (isLast) dots += `<text x="${px}" y="${py - 10}" text-anchor="middle" font-size="11" font-weight="700" fill="#F0F4F1">${String(w.kg).replace('.', ',')}</text>`;
+        data-d="${esc(w.d)}" data-kg="${esc(String(Number(w.kg) || 0))}" style="cursor:pointer"/>`;
+      if (isLast) dots += `<text x="${px}" y="${py - 10}" text-anchor="middle" font-size="11" font-weight="700" fill="#F0F4F1">${esc(String(Number(w.kg) || 0).replace('.', ','))}</text>`;
     });
   }
 
@@ -786,16 +853,45 @@ async function exportBackup() {
     toast('Backup exportado ✔');
   } catch { toast('Erro no backup'); }
 }
+/* Valida a forma de cada chave conhecida antes de gravar — um backup vindo de fora
+   (arquivo editado à mão, ou adulterado) nunca deve poder gravar HTML/JS via innerHTML
+   nem quebrar o app com um tipo inesperado (ex.: array virar objeto). */
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+function sanitizeStoreValue(k, v) {
+  if (k === 'shape:weights') {
+    if (!Array.isArray(v)) return null;
+    return v.filter(w => w && DATE_RE.test(w.d) && typeof w.kg === 'number' && w.kg >= 40 && w.kg <= 200)
+      .map(w => ({ d: w.d, kg: Math.round(w.kg * 10) / 10 }));
+  }
+  if (k.startsWith('shape:cardio:')) {
+    if (!DATE_RE.test(k.slice('shape:cardio:'.length)) || !v || typeof v !== 'object') return null;
+    const num = (n) => (typeof n === 'number' && n >= 0 && n <= 2000) ? n : 0;
+    return { bike: num(v.bike), escada: num(v.escada) };
+  }
+  if (k.startsWith('shape:day:')) {
+    if (!DATE_RE.test(k.slice('shape:day:'.length)) || !v || typeof v !== 'object') return null;
+    const meals = Array.isArray(v.meals) ? v.meals.slice(0, 5).map(Boolean) : [false, false, false, false, false];
+    while (meals.length < 5) meals.push(false);
+    return { meals, workout: Boolean(v.workout), extras: Boolean(v.extras), calf: Boolean(v.calf) };
+  }
+  return null; // chave desconhecida: ignora (nunca grava fora do formato esperado)
+}
+
 async function importBackup(file) {
   if (!file) return;
   try {
     const payload = JSON.parse(await file.text());
     if (payload.app !== 'shape') throw new Error('arquivo inválido');
     if (!confirm('Importar backup? Dados atuais com mesma data serão sobrescritos.')) return;
-    for (const [k, v] of Object.entries(payload.store || {})) store.set(k, v);
+    for (const [k, v] of Object.entries(payload.store || {})) {
+      const clean = sanitizeStoreValue(k, v);
+      if (clean !== null) store.set(k, clean);
+    }
     for (const p of payload.photos || []) {
+      if (!POSES.includes(p.pose) || !DATE_RE.test(p.week) || !DATE_RE.test(p.date)) continue;
+      if (typeof p.b64 !== 'string' || !p.b64.startsWith('data:image/')) continue; // nunca busca URL remota
       const blob = await (await fetch(p.b64)).blob();
-      await putPhoto({ id: p.id, week: p.week, date: p.date, pose: p.pose, blob });
+      await putPhoto({ id: `${p.week}:${p.pose}`, week: p.week, date: p.date, pose: p.pose, blob });
     }
     toast('Backup importado ✔');
     renderAll();
@@ -818,6 +914,7 @@ function switchView(name) {
     t.classList.toggle('active', on);
     t.setAttribute('aria-selected', on);
   });
+  renderTopbar();
   renderers[name]();
   window.scrollTo({ top: 0 });
 }
@@ -836,20 +933,28 @@ function renderAll() {
 
 $$('.tab').forEach(t => t.addEventListener('click', () => switchView(t.dataset.view)));
 
-/* re-renderiza ao voltar pro app (troca de dia, voltar do background) */
+/* re-renderiza na virada de dia — ao voltar pro app (visibilitychange) e também com o
+   app aberto e em primeiro plano (setInterval), para não gravar check-marks no dia errado
+   nem deixar a topbar defasada se a aba nunca for ocultada cruzando a meia-noite. */
 let lastRenderDay = dayKey(today());
-document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && dayKey(today()) !== lastRenderDay) {
+function checkDayChange() {
+  if (dayKey(today()) !== lastRenderDay) {
     lastRenderDay = dayKey(today());
     renderAll();
   }
-});
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkDayChange(); });
+setInterval(() => { if (!document.hidden) checkDayChange(); }, 60000);
 
 /* ---------------- init ---------------- */
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
+    // só recarrega em troca de controller que representa uma ATUALIZAÇÃO real — não a
+    // ativação inicial do service worker na primeira visita (clients.claim() dispara
+    // controllerchange mesmo sem update algum, o que recarregaria a página à toa).
+    const hadControllerAtLoad = !!navigator.serviceWorker.controller;
     navigator.serviceWorker.register('sw.js').then(reg => {
       reg.addEventListener('updatefound', () => {
         const nw = reg.installing;
@@ -863,7 +968,7 @@ if ('serviceWorker' in navigator) {
     }).catch(() => {});
     let reloaded = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (reloaded) return;
+      if (reloaded || !hadControllerAtLoad) { reloaded = true; return; }
       reloaded = true;
       location.reload();
     });

@@ -1,5 +1,5 @@
 /* Service worker — app shell offline. Suba a versão a cada deploy. */
-const VERSION = 'shape-v1';
+const VERSION = 'shape-v2';
 const CORE = [
   './',
   './index.html',
@@ -13,7 +13,11 @@ const CORE = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(VERSION).then(c => c.addAll(CORE)));
+  // cache: 'reload' ignora o cache HTTP (GitHub Pages serve com max-age=600) para não
+  // pré-cachear arquivos velhos logo após um deploy.
+  e.waitUntil(
+    caches.open(VERSION).then(c => c.addAll(CORE.map(u => new Request(u, { cache: 'reload' }))))
+  );
 });
 
 self.addEventListener('activate', (e) => {
