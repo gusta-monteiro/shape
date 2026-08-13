@@ -107,6 +107,19 @@ body {
 .bigcheck svg { width: 16px; height: 16px; stroke: var(--bg); stroke-width: 3.5; fill: none; opacity: 0; }
 .bigcheck.on { background: var(--lime); border-color: var(--lime); }
 .bigcheck.on svg { opacity: 1; }
+.bigcheck.small { width: 24px; height: 24px; flex-shrink: 0; margin-top: 2px; }
+.bigcheck.small svg { width: 13px; height: 13px; }
+
+/* ---------- checklist de exercícios (aba Hoje) ---------- */
+.ex-checklist { margin-top: 4px; }
+.exercise.ex-track {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 12px 0; border-top: 1px solid var(--border);
+}
+.ex-track-body { flex: 1; min-width: 0; }
+.exercise.ex-track.done .ex-name { color: var(--text-3); text-decoration: line-through; }
+.exercise.ex-track.done .ex-sets,
+.exercise.ex-track.done .ex-note { color: var(--text-3); opacity: 0.7; }
 
 /* ---------- refeições ---------- */
 .meal { display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }

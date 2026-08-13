@@ -74,7 +74,7 @@ const store = {
   get(k, fb) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fb; } catch { return fb; } },
   set(k, v) { localStorage.setItem(k, JSON.stringify(v)); },
 };
-const dayState = (key) => store.get('shape:day:' + key, { meals: [false, false, false, false, false], workout: false, extras: false, calf: false });
+const dayState = (key) => store.get('shape:day:' + key, { meals: [false, false, false, false, false], workout: false, extras: false, calf: false, exDone: [] });
 const saveDayState = (key, s) => store.set('shape:day:' + key, s);
 const cardioKey = (d) => 'shape:cardio:' + dayKey(mondayOf(d));
 const getWeights = () => store.get('shape:weights', []);
@@ -166,53 +166,52 @@ function renderDayPlan(container, date) {
   const info = dietFor(date);
   const isToday = sameDay(date, today());
   const letter = workoutLetter(date);
+  const rerender = () => renderDayPlan(container, date);
 
-  // hero: treino ou descanso
+  // hero: treino (com checklist de exercícios) ou descanso
   if (letter) {
     const w = DATA.workouts[letter];
+    const exCount = w.exercises.length;
+    if (!Array.isArray(state.exDone) || state.exDone.length !== exCount) {
+      state.exDone = new Array(exCount).fill(false);
+    }
+    const doneCount = state.exDone.filter(Boolean).length;
+
     const card = h(`<div class="card">
       <div class="hero">
         <div class="hero-letter ${w.group}">${letter}</div>
         <div class="hero-info">
           <div class="t">Treino ${letter} — ${esc(w.name)}</div>
-          <div class="s">${w.exercises.length} exercícios · descanso ${w.rest} · 20h</div>
+          <div class="s">${doneCount}/${exCount} exercícios · descanso ${w.rest} · 20h</div>
         </div>
-        <button class="bigcheck hero-check ${state.workout ? 'on' : ''}" aria-label="Marcar treino como feito">${CHECK_SVG}</button>
+        <button class="bigcheck hero-check ${state.workout ? 'on' : ''}" aria-label="Marcar treino inteiro como feito">${CHECK_SVG}</button>
       </div>
+      <div class="ex-checklist"></div>
     </div>`);
-    $('.hero-check', card).addEventListener('click', (e) => {
-      state.workout = !state.workout; saveDayState(key, state);
-      e.currentTarget.classList.toggle('on', state.workout);
+    $('.hero-check', card).addEventListener('click', () => {
+      const allDone = state.exDone.every(Boolean);
+      state.exDone = new Array(exCount).fill(!allDone);
+      state.workout = !allDone;
+      saveDayState(key, state);
       if (state.workout) toast('Treino concluído 💪');
+      rerender();
     });
-    card.addEventListener('click', (e) => {
-      if (e.target.closest('.bigcheck')) return;
-      showWorkoutInTab(letter);
+
+    const listEl = $('.ex-checklist', card);
+    w.exercises.forEach((ex, i) => {
+      const row = h(`<div class="exercise ex-track ${state.exDone[i] ? 'done' : ''}">
+        <button class="bigcheck small ${state.exDone[i] ? 'on' : ''}" aria-label="Marcar ${esc(ex.name)}">${CHECK_SVG}</button>
+        <div class="ex-track-body">${exerciseInner(ex)}</div>
+      </div>`);
+      $('.bigcheck', row).addEventListener('click', () => {
+        state.exDone[i] = !state.exDone[i];
+        state.workout = state.exDone.every(Boolean);
+        saveDayState(key, state);
+        rerender();
+      });
+      listEl.appendChild(row);
     });
     container.appendChild(card);
-
-    // panturrilha pós-treino: opcional, 3-4x/semana no total somando com os dias de descanso
-    const cproto = calfProtocol(date);
-    const calfCard = h(`<div class="card">
-      <div class="hero">
-        <div class="hero-letter rest" style="font-size:20px">🦵</div>
-        <div class="hero-info">
-          <div class="t">Panturrilha pós-treino</div>
-          <div class="s">Opcional · protocolo ${cproto} · alterne com os dias de descanso (3–4x/semana no total)</div>
-        </div>
-        <button class="bigcheck hero-check ${state.calf ? 'on' : ''}" aria-label="Marcar panturrilha como feita">${CHECK_SVG}</button>
-      </div>
-    </div>`);
-    $('.hero-check', calfCard).addEventListener('click', (e) => {
-      state.calf = !state.calf; saveDayState(key, state);
-      e.currentTarget.classList.toggle('on', state.calf);
-      if (state.calf) toast('Panturrilha concluída ✔');
-    });
-    calfCard.addEventListener('click', (e) => {
-      if (e.target.closest('.bigcheck')) return;
-      showWorkoutInTab('calf-' + cproto);
-    });
-    container.appendChild(calfCard);
   } else {
     const proto = restProtocol(date);
     const cproto = calfProtocol(date);
@@ -321,6 +320,31 @@ function renderDayPlan(container, date) {
       ${g.freeMeal ? `<div class="guide-item"><span class="ico">🍕</span><span>${esc(g.freeMeal)}</span></div>` : ''}
     </div>
   </div>`));
+
+  // panturrilha pós-treino: opcional, 3-4x/semana no total somando com os dias de descanso
+  if (letter) {
+    const cproto = calfProtocol(date);
+    const calfCard = h(`<div class="card">
+      <div class="hero">
+        <div class="hero-letter rest" style="font-size:20px">🦵</div>
+        <div class="hero-info">
+          <div class="t">Panturrilha pós-treino</div>
+          <div class="s">Opcional · protocolo ${cproto} · alterne com os dias de descanso (3–4x/semana no total)</div>
+        </div>
+        <button class="bigcheck hero-check ${state.calf ? 'on' : ''}" aria-label="Marcar panturrilha como feita">${CHECK_SVG}</button>
+      </div>
+    </div>`);
+    $('.hero-check', calfCard).addEventListener('click', (e) => {
+      state.calf = !state.calf; saveDayState(key, state);
+      e.currentTarget.classList.toggle('on', state.calf);
+      if (state.calf) toast('Panturrilha concluída ✔');
+    });
+    calfCard.addEventListener('click', (e) => {
+      if (e.target.closest('.bigcheck')) return;
+      showWorkoutInTab('calf-' + cproto);
+    });
+    container.appendChild(calfCard);
+  }
 }
 
 function parseCardioTargets(list) {
@@ -380,9 +404,8 @@ function renderSemana() {
 }
 
 /* ---------------- TREINO ---------------- */
-function exerciseHTML(ex) {
-  return `<div class="exercise">
-    <div class="ex-name">${esc(ex.name)}${ex.pair ? '<span class="pair-tag">BI-SET</span>' : ''}</div>
+function exerciseInner(ex) {
+  return `<div class="ex-name">${esc(ex.name)}${ex.pair ? '<span class="pair-tag">BI-SET</span>' : ''}</div>
     <div class="ex-sets">${(Array.isArray(ex.sets) ? ex.sets : [])
       .map(s => Array.isArray(s)
         ? `<div class="ex-set"><span class="st">${esc(s[0])}</span><span>${esc(s[1])}</span></div>`
@@ -391,8 +414,10 @@ function exerciseHTML(ex) {
     </div>
     ${ex.note ? `<div class="ex-note">${esc(ex.note)}</div>` : ''}
     ${ex.link ? `<a class="ex-link" href="${esc(ex.link)}" target="_blank" rel="noopener">▶ ver execução</a>` : ''}
-    ${ex.link2 ? `<a class="ex-link" href="${esc(ex.link2)}" target="_blank" rel="noopener" style="margin-left:10px">▶ vídeo 2</a>` : ''}
-  </div>`;
+    ${ex.link2 ? `<a class="ex-link" href="${esc(ex.link2)}" target="_blank" rel="noopener" style="margin-left:10px">▶ vídeo 2</a>` : ''}`;
+}
+function exerciseHTML(ex) {
+  return `<div class="exercise">${exerciseInner(ex)}</div>`;
 }
 
 function renderTreino() {
@@ -873,7 +898,8 @@ function sanitizeStoreValue(k, v) {
     if (!DATE_RE.test(k.slice('shape:day:'.length)) || !v || typeof v !== 'object') return null;
     const meals = Array.isArray(v.meals) ? v.meals.slice(0, 5).map(Boolean) : [false, false, false, false, false];
     while (meals.length < 5) meals.push(false);
-    return { meals, workout: Boolean(v.workout), extras: Boolean(v.extras), calf: Boolean(v.calf) };
+    const exDone = Array.isArray(v.exDone) ? v.exDone.slice(0, 8).map(Boolean) : [];
+    return { meals, workout: Boolean(v.workout), extras: Boolean(v.extras), calf: Boolean(v.calf), exDone };
   }
   return null; // chave desconhecida: ignora (nunca grava fora do formato esperado)
 }
