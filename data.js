@@ -10,6 +10,7 @@ const DATA = {
     trainingWeekdays: [1, 2, 3, 5, 6], // seg ter qua sex sáb
     workoutTime: '20:00',
     checkinWeekday: 0, // domingo
+    firstCheckinDate: '2026-08-13', // primeiro check-in, fora do ciclo semanal de domingo
     goal: { startDate: '2026-08-12', startKg: 100, targetDate: '2026-12-31', targetKg: 80, heightM: 1.75 },
   },
 

@@ -236,12 +236,13 @@ function renderDayPlan(container, date) {
       showWorkoutInTab('rest');
     });
     container.appendChild(card);
-    if (date.getDay() === DATA.config.checkinWeekday) {
+    const isFirstCheckin = key === DATA.config.firstCheckinDate;
+    if (date.getDay() === DATA.config.checkinWeekday || isFirstCheckin) {
       container.appendChild(h(`<div class="card" style="border-color: rgba(252,211,77,0.35)">
         <div class="hero">
           <div class="hero-letter" style="background: var(--amber-dim); color: var(--amber); font-size:22px">⚖️</div>
           <div class="hero-info">
-            <div class="t">Dia de Check-in</div>
+            <div class="t">${isFirstCheckin ? 'Primeiro Check-in' : 'Dia de Check-in'}</div>
             <div class="s">Peso em jejum + fotos frente/lado/costas</div>
           </div>
         </div>

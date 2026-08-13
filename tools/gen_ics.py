@@ -10,6 +10,7 @@ SEQ = ['A', 'B', 'C', 'D']
 NAMES = {'A': 'Upper 1', 'B': 'Lower 1', 'C': 'Upper 2', 'D': 'Lower 2'}
 TRAIN_WD = {0, 1, 2, 4, 5}          # Python: 0=seg ... 6=dom
 END = date(2026, 12, 31)
+FIRST_CHECKIN = date(2026, 8, 13)   # primeiro check-in, fora do ciclo semanal de domingo
 
 PHASES = [
     (date(2026, 8, 12), 'Início — Cutting Bloco 1'),
@@ -62,6 +63,11 @@ while d <= END:
         if d.weekday() == 6:  # domingo: check-in de manhã
             add(f'shape-checkin-{d.isoformat()}', fmt(d, 8, 30), fmt(d, 8, 45),
                 'Check-in — Peso em jejum + Fotos',
+                'Pesar em jejum, fotos frente/lado/costas. Registrar no app.',
+                alarm_min=None)
+        elif d == FIRST_CHECKIN:  # primeiro check-in avulso, fora do ciclo de domingo
+            add(f'shape-checkin-{d.isoformat()}', fmt(d, 8, 30), fmt(d, 8, 45),
+                'Primeiro Check-in — Peso em jejum + Fotos',
                 'Pesar em jejum, fotos frente/lado/costas. Registrar no app.',
                 alarm_min=None)
     d += timedelta(days=1)

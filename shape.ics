@@ -41,6 +41,14 @@ DESCRIPTION:Descanso Ativo — Abs A + Pantu A + Antebraço
 END:VALARM
 END:VEVENT
 BEGIN:VEVENT
+UID:shape-checkin-2026-08-13@gusta-monteiro.github.io
+DTSTAMP:20260812T120000Z
+DTSTART;TZID=America/Sao_Paulo:20260813T083000
+DTEND;TZID=America/Sao_Paulo:20260813T084500
+SUMMARY:Primeiro Check-in — Peso em jejum + Fotos
+DESCRIPTION:Pesar em jejum, fotos frente/lado/costas. Registrar no app.
+END:VEVENT
+BEGIN:VEVENT
 UID:shape-treino-2026-08-14@gusta-monteiro.github.io
 DTSTAMP:20260812T120000Z
 DTSTART;TZID=America/Sao_Paulo:20260814T200000
