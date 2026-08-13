@@ -1,11 +1,11 @@
-# Gera os ícones do PWA (fundo escuro full-bleed, halter em lime).
+# Gera os ícones do PWA (fundo escuro full-bleed, halter vermelho).
 from PIL import Image, ImageDraw
 import os
 
 BG = (14, 18, 16, 255)
 BG_EDGE = (9, 11, 10, 255)
-LIME = (163, 230, 53, 255)
-LIME_SOFT = (217, 249, 157, 255)
+ACCENT = (255, 107, 87, 255)
+ACCENT_SOFT = (255, 189, 176, 255)
 
 S = 1024
 img = Image.new('RGBA', (S, S), BG)
@@ -22,10 +22,10 @@ glyph = Image.new('RGBA', (S, S), (0, 0, 0, 0))
 g = ImageDraw.Draw(glyph)
 cy = S / 2
 bar_w, bar_h = 640, 56
-g.rounded_rectangle([S/2 - bar_w/2, cy - bar_h/2, S/2 + bar_w/2, cy + bar_h/2], radius=bar_h/2, fill=LIME_SOFT)
+g.rounded_rectangle([S/2 - bar_w/2, cy - bar_h/2, S/2 + bar_w/2, cy + bar_h/2], radius=bar_h/2, fill=ACCENT_SOFT)
 
 def plate(cx, w, h):
-    g.rounded_rectangle([cx - w/2, cy - h/2, cx + w/2, cy + h/2], radius=w/2.2, fill=LIME)
+    g.rounded_rectangle([cx - w/2, cy - h/2, cx + w/2, cy + h/2], radius=w/2.2, fill=ACCENT)
 
 # placas: externa menor, interna maior, de cada lado
 plate(S/2 - 245, 92, 380)

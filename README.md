@@ -19,10 +19,10 @@ PWA pessoal de treino e dieta. Roda em https://gusta-monteiro.github.io/shape/
 - **Treinos:** seg, ter, qua, sex, sáb — sequência A→B→C→D contínua (âncora: 12/08/2026 = C).
 - **Descanso ativo:** qui e dom — abdômen + panturrilha (protocolos A/B alternados) + antebraço.
 - **Fases:** Cutting Bloco 1 (12/08→11/10) · Diet Break (12/10→18/10) · Cutting Bloco 2 (19/10→13/12) · Estabilização (14/12→).
-- **Check-in:** domingo em jejum — peso + fotos frente/lado/costas, registrados no app.
+- **Check-in:** domingo em jejum — peso + fotos e/ou vídeos frente/lado/costas, registrados no app.
 
-Dados de peso e fotos ficam **somente no aparelho** (localStorage/IndexedDB). Use o botão
-Exportar na aba Check-in para fazer backup.
+Dados de peso, fotos e vídeos ficam **somente no aparelho** (localStorage/IndexedDB). Use o
+botão Exportar na aba Check-in para fazer backup.
 
 ## Manutenção
 

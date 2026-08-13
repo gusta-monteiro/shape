@@ -179,7 +179,6 @@ function renderDayPlan(container, date) {
 
     const card = h(`<div class="card">
       <div class="hero">
-        <div class="hero-letter ${w.group}">${letter}</div>
         <div class="hero-info">
           <div class="t">Treino ${letter} — ${esc(w.name)}</div>
           <div class="s">${doneCount}/${exCount} exercícios · descanso ${w.rest} · 20h</div>
@@ -622,7 +621,7 @@ function renderCheckin() {
 
   view.appendChild(h(`<div class="stat-row">
     <div class="stat"><div class="v">${String(current).replace('.', ',')}</div><div class="l">atual</div></div>
-    <div class="stat"><div class="v" style="color:var(--lime)">${lost > 0 ? '−' : ''}${String(Math.abs(lost).toFixed(1)).replace('.', ',')}</div><div class="l">perdido</div></div>
+    <div class="stat"><div class="v" style="color:var(--accent)">${lost > 0 ? '−' : ''}${String(Math.abs(lost).toFixed(1)).replace('.', ',')}</div><div class="l">perdido</div></div>
     <div class="stat"><div class="v">${String(Math.max(0, toGo).toFixed(1)).replace('.', ',')}</div><div class="l">faltam</div></div>
     <div class="stat"><div class="v">${pace}</div><div class="l">ritmo</div></div>
   </div>`));
@@ -678,14 +677,14 @@ function renderCheckin() {
     view.appendChild(histCard);
   }
 
-  // fotos da semana
+  // fotos/vídeos da semana
   const photosCard = h(`<div class="card">
-    <h2>Fotos desta semana <span class="sub">· domingo em jejum</span></h2>
+    <h2>Fotos e vídeos desta semana <span class="sub">· domingo em jejum</span></h2>
     <div class="photo-slots">
       ${POSES.map(p => `<label class="photo-slot" data-pose="${p}">
         <span>+ ${p}</span>
         <span class="pose-tag" hidden>${p}</span>
-        <input type="file" accept="image/*">
+        <input type="file" accept="image/*,video/*">
       </label>`).join('')}
     </div>
   </div>`);
@@ -712,6 +711,12 @@ function renderCheckin() {
   view.appendChild(backup);
 }
 
+function mediaTagHTML(rec, src, altText) {
+  return rec.kind === 'video'
+    ? `<video src="${src}" muted playsinline preload="metadata" controls></video>`
+    : `<img src="${src}" alt="${esc(altText || '')}">`;
+}
+
 async function loadPhotosUI(photosCard, galleryCard) {
   let photos = [];
   try { photos = await allPhotos(); } catch { /* indexeddb indisponível */ }
@@ -722,19 +727,21 @@ async function loadPhotosUI(photosCard, galleryCard) {
     const pose = slot.dataset.pose;
     const mine = photos.filter(p => p.week === weekKey && p.pose === pose);
     if (mine.length) {
-      const url = trackObjectURL(mine[0].blob);
-      slot.insertBefore(h(`<img src="${url}" alt="${pose}">`), slot.firstChild);
+      const rec = mine[0];
+      const url = trackObjectURL(rec.blob);
+      slot.insertBefore(h(mediaTagHTML(rec, url, pose)), slot.firstChild);
       $('.pose-tag', slot).hidden = false;
     }
     $('input', slot).addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
+      const isVideo = file.type.startsWith('video/');
       try {
-        const blob = await compressImage(file);
-        await putPhoto({ id: `${weekKey}:${pose}`, week: weekKey, date: dayKey(today()), pose, blob });
-        toast('Foto salva ✔');
+        const blob = isVideo ? file : await compressImage(file);
+        await putPhoto({ id: `${weekKey}:${pose}`, week: weekKey, date: dayKey(today()), pose, kind: isVideo ? 'video' : 'photo', blob });
+        toast(isVideo ? 'Vídeo salvo ✔' : 'Foto salva ✔');
         renderCheckin();
-      } catch (err) { toast('Erro ao salvar foto'); }
+      } catch (err) { toast(isVideo ? 'Erro ao salvar vídeo' : 'Erro ao salvar foto'); }
     });
   }
 
@@ -744,7 +751,7 @@ async function loadPhotosUI(photosCard, galleryCard) {
   photos.forEach(p => { (byWeek[p.week] = byWeek[p.week] || []).push(p); });
   const weeks = Object.keys(byWeek).sort().reverse();
   if (!weeks.length) {
-    gallery.appendChild(h('<p class="empty">Sem fotos ainda. Primeira sessão: domingo de manhã.</p>'));
+    gallery.appendChild(h('<p class="empty">Sem fotos ou vídeos ainda. Primeira sessão: domingo de manhã.</p>'));
     return;
   }
 
@@ -760,7 +767,7 @@ async function loadPhotosUI(photosCard, galleryCard) {
     [first, lastW].forEach((set, ci) => {
       POSES.forEach(pose => {
         const p = set.find(x => x.pose === pose);
-        if (p) cols[ci].appendChild(h(`<div class="ph"><img src="${trackObjectURL(p.blob)}" alt="${esc(pose)}"></div>`));
+        if (p) cols[ci].appendChild(h(`<div class="ph">${mediaTagHTML(p, trackObjectURL(p.blob), pose)}</div>`));
       });
     });
     gallery.appendChild(cmp);
@@ -772,11 +779,12 @@ async function loadPhotosUI(photosCard, galleryCard) {
       <div class="gallery-imgs"></div>
     </div>`);
     byWeek[week].sort((a, b) => POSES.indexOf(a.pose) - POSES.indexOf(b.pose)).forEach(p => {
-      const ph = h(`<div class="ph"><img src="${trackObjectURL(p.blob)}" alt="${esc(p.pose)}"></div>`);
+      const ph = h(`<div class="ph">${mediaTagHTML(p, trackObjectURL(p.blob), p.pose)}</div>`);
+      const label = p.kind === 'video' ? 'vídeo' : 'foto';
       let pressTimer = null;
       ph.addEventListener('touchstart', () => {
         pressTimer = setTimeout(async () => {
-          if (confirm(`Excluir foto (${p.pose}, semana ${fmtShort(parseISO(week))})?`)) {
+          if (confirm(`Excluir ${label} (${p.pose}, semana ${fmtShort(parseISO(week))})?`)) {
             await deletePhoto(p.id); renderCheckin();
           }
         }, 650);
@@ -786,7 +794,7 @@ async function loadPhotosUI(photosCard, galleryCard) {
       ph.addEventListener('touchcancel', () => clearTimeout(pressTimer));
       ph.addEventListener('contextmenu', async (e) => {
         e.preventDefault();
-        if (confirm(`Excluir foto (${p.pose})?`)) { await deletePhoto(p.id); renderCheckin(); }
+        if (confirm(`Excluir ${label} (${p.pose})?`)) { await deletePhoto(p.id); renderCheckin(); }
       });
       $('.gallery-imgs', group).appendChild(ph);
     });
@@ -829,10 +837,10 @@ function buildChart(weights) {
   let line = '', dots = '';
   if (weights.length) {
     const pts = weights.map(w => [X(parseISO(w.d).getTime()), Y(w.kg), w]);
-    line = `<polyline points="${pts.map(p => p[0] + ',' + p[1]).join(' ')}" fill="none" stroke="#A3E635" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+    line = `<polyline points="${pts.map(p => p[0] + ',' + p[1]).join(' ')}" fill="none" stroke="#FF6B57" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
     pts.forEach(([px, py, w], i) => {
       const isLast = i === pts.length - 1;
-      dots += `<circle cx="${px}" cy="${py}" r="${isLast ? 5 : 4}" fill="#A3E635" stroke="#0B0D0C" stroke-width="2"
+      dots += `<circle cx="${px}" cy="${py}" r="${isLast ? 5 : 4}" fill="#FF6B57" stroke="#0B0D0C" stroke-width="2"
         data-d="${esc(w.d)}" data-kg="${esc(String(Number(w.kg) || 0))}" style="cursor:pointer"/>`;
       if (isLast) dots += `<text x="${px}" y="${py - 10}" text-anchor="middle" font-size="11" font-weight="700" fill="#F0F4F1">${esc(String(Number(w.kg) || 0).replace('.', ','))}</text>`;
     });
@@ -867,7 +875,7 @@ async function exportBackup() {
     }
     const photos = [];
     for (const p of await allPhotos()) {
-      photos.push({ id: p.id, week: p.week, date: p.date, pose: p.pose, b64: await blobToB64(p.blob) });
+      photos.push({ id: p.id, week: p.week, date: p.date, pose: p.pose, kind: p.kind === 'video' ? 'video' : 'photo', b64: await blobToB64(p.blob) });
     }
     const payload = { app: 'shape', version: 1, exportedAt: new Date().toISOString(), store: days, photos };
     const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
@@ -916,9 +924,11 @@ async function importBackup(file) {
     }
     for (const p of payload.photos || []) {
       if (!POSES.includes(p.pose) || !DATE_RE.test(p.week) || !DATE_RE.test(p.date)) continue;
-      if (typeof p.b64 !== 'string' || !p.b64.startsWith('data:image/')) continue; // nunca busca URL remota
+      // nunca busca URL remota — só aceita dados embutidos como imagem ou vídeo
+      if (typeof p.b64 !== 'string' || !(p.b64.startsWith('data:image/') || p.b64.startsWith('data:video/'))) continue;
+      const kind = p.kind === 'video' ? 'video' : 'photo';
       const blob = await (await fetch(p.b64)).blob();
-      await putPhoto({ id: `${p.week}:${p.pose}`, week: p.week, date: p.date, pose: p.pose, blob });
+      await putPhoto({ id: `${p.week}:${p.pose}`, week: p.week, date: p.date, pose: p.pose, kind, blob });
     }
     toast('Backup importado ✔');
     renderAll();
