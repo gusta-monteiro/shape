@@ -80,6 +80,60 @@ const cardioKey = (d) => 'shape:cardio:' + dayKey(mondayOf(d));
 const getWeights = () => store.get('shape:weights', []);
 const setWeights = (w) => store.set('shape:weights', w.sort((a, b) => a.d < b.d ? -1 : 1));
 
+/* ---------------- registro de carga por exercício ---------------- */
+function scanLogDates() {
+  const prefix = 'shape:log:';
+  const out = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith(prefix)) out.push(k.slice(prefix.length));
+  }
+  return out.sort().reverse();
+}
+function saveExerciseLog(dateKey, exerciseKey, patch) {
+  const k = 'shape:log:' + dateKey;
+  const obj = store.get(k, {});
+  obj[exerciseKey] = { ...(obj[exerciseKey] || {}), ...patch };
+  store.set(k, obj);
+}
+// valor mais recente registrado para o exercício, ignorando dateKey (a sessão sendo editada)
+function mostRecentLog(exerciseKey, dates, excludeDateKey) {
+  for (const dk of dates) {
+    if (dk === excludeDateKey) continue;
+    const log = store.get('shape:log:' + dk, null);
+    const v = log && log[exerciseKey];
+    if (v && (v.weight != null || v.reps)) return { date: dk, weight: v.weight, reps: v.reps };
+  }
+  return null;
+}
+function formatLog(v) {
+  const parts = [];
+  if (v.weight != null) parts.push(`${String(v.weight).replace('.', ',')}kg`);
+  if (v.reps) parts.push(v.reps);
+  return `${parts.join(' × ')} · ${fmtShort(parseISO(v.date))}`;
+}
+
+/* ---------------- streak (dias seguidos com plano 100% concluído) ---------------- */
+function isDayComplete(d) {
+  const s = dayState(dayKey(d));
+  const mealsDone = Array.isArray(s.meals) && s.meals.length >= 5 && s.meals.slice(0, 5).every(Boolean);
+  if (!mealsDone) return false;
+  const letter = workoutLetter(d);
+  if (letter) {
+    const exCount = DATA.workouts[letter].exercises.length;
+    return Array.isArray(s.exDone) && s.exDone.length === exCount && exCount > 0 && s.exDone.every(Boolean);
+  }
+  return Boolean(s.extras);
+}
+function computeStreak(date) {
+  let streak = 0;
+  let d = addDays(date, -1);
+  let guard = 0;
+  while (isDayComplete(d) && guard++ < 400) { streak++; d = addDays(d, -1); }
+  if (isDayComplete(date)) streak++;
+  return streak;
+}
+
 /* ---------------- fotos (IndexedDB) ---------------- */
 let dbPromise = null;
 function db() {
@@ -168,14 +222,41 @@ function renderDayPlan(container, date) {
   const letter = workoutLetter(date);
   const rerender = () => renderDayPlan(container, date);
 
-  // hero: treino (com checklist de exercícios) ou descanso
+  let exCount = 0;
   if (letter) {
-    const w = DATA.workouts[letter];
-    const exCount = w.exercises.length;
+    exCount = DATA.workouts[letter].exercises.length;
     if (!Array.isArray(state.exDone) || state.exDone.length !== exCount) {
       state.exDone = new Array(exCount).fill(false);
     }
+  }
+
+  // progresso do dia + streak (só no dia atual)
+  if (isToday) {
+    const trackDone = letter ? state.exDone.filter(Boolean).length : (state.extras ? 1 : 0);
+    const trackTotal = letter ? exCount : 1;
+    const mealsDone = state.meals.filter(Boolean).length;
+    const totalItems = trackTotal + state.meals.length;
+    const doneItems = trackDone + mealsDone;
+    const pct = totalItems ? Math.round(doneItems / totalItems * 100) : 0;
+    const streak = computeStreak(date);
+    container.appendChild(h(`<div class="card progress-card">
+      <div class="progress-row">
+        <div>
+          <div class="progress-main">${doneItems}/${totalItems} concluído hoje</div>
+          ${streak > 0 ? `<div class="progress-streak">🔥 ${streak} dia${streak > 1 ? 's' : ''} seguido${streak > 1 ? 's' : ''}</div>` : ''}
+        </div>
+        <div class="progress-pct">${pct}%</div>
+      </div>
+      <div class="bar"><i style="width:${pct}%"></i></div>
+    </div>`));
+  }
+
+  // hero: treino (com checklist de exercícios) ou descanso
+  if (letter) {
+    const w = DATA.workouts[letter];
     const doneCount = state.exDone.filter(Boolean).length;
+    const logDates = scanLogDates();
+    const dayLog = store.get('shape:log:' + key, {});
 
     const card = h(`<div class="card">
       <div class="hero">
@@ -198,15 +279,31 @@ function renderDayPlan(container, date) {
 
     const listEl = $('.ex-checklist', card);
     w.exercises.forEach((ex, i) => {
+      const exerciseKey = letter + '::' + ex.name;
+      const lastVal = mostRecentLog(exerciseKey, logDates, key);
+      const todayVal = dayLog[exerciseKey] || {};
       const row = h(`<div class="exercise ex-track ${state.exDone[i] ? 'done' : ''}">
         <button class="bigcheck small ${state.exDone[i] ? 'on' : ''}" aria-label="Marcar ${esc(ex.name)}">${CHECK_SVG}</button>
-        <div class="ex-track-body">${exerciseInner(ex)}</div>
+        <div class="ex-track-body">
+          ${exerciseInner(ex, lastVal)}
+          <div class="ex-log">
+            <input type="number" inputmode="decimal" step="0.5" min="0" max="500" placeholder="kg" class="ex-log-kg" value="${todayVal.weight != null ? esc(String(todayVal.weight)) : ''}">
+            <input type="text" inputmode="text" placeholder="reps (ex: 8,8,9)" maxlength="40" class="ex-log-reps" value="${esc(todayVal.reps || '')}">
+          </div>
+        </div>
       </div>`);
       $('.bigcheck', row).addEventListener('click', () => {
         state.exDone[i] = !state.exDone[i];
         state.workout = state.exDone.every(Boolean);
         saveDayState(key, state);
         rerender();
+      });
+      $('.ex-log-kg', row).addEventListener('change', (e) => {
+        const wv = parseFloat(String(e.target.value).replace(',', '.'));
+        saveExerciseLog(key, exerciseKey, { weight: Number.isFinite(wv) ? wv : null });
+      });
+      $('.ex-log-reps', row).addEventListener('change', (e) => {
+        saveExerciseLog(key, exerciseKey, { reps: e.target.value.trim().slice(0, 40) });
       });
       listEl.appendChild(row);
     });
@@ -403,7 +500,7 @@ function renderSemana() {
 }
 
 /* ---------------- TREINO ---------------- */
-function exerciseInner(ex) {
+function exerciseInner(ex, lastVal) {
   return `<div class="ex-name">${esc(ex.name)}${ex.pair ? '<span class="pair-tag">BI-SET</span>' : ''}</div>
     <div class="ex-sets">${(Array.isArray(ex.sets) ? ex.sets : [])
       .map(s => Array.isArray(s)
@@ -413,10 +510,11 @@ function exerciseInner(ex) {
     </div>
     ${ex.note ? `<div class="ex-note">${esc(ex.note)}</div>` : ''}
     ${ex.link ? `<a class="ex-link" href="${esc(ex.link)}" target="_blank" rel="noopener">▶ ver execução</a>` : ''}
-    ${ex.link2 ? `<a class="ex-link" href="${esc(ex.link2)}" target="_blank" rel="noopener" style="margin-left:10px">▶ vídeo 2</a>` : ''}`;
+    ${ex.link2 ? `<a class="ex-link" href="${esc(ex.link2)}" target="_blank" rel="noopener" style="margin-left:10px">▶ vídeo 2</a>` : ''}
+    ${lastVal ? `<div class="ex-last">Última vez: ${esc(formatLog(lastVal))}</div>` : ''}`;
 }
-function exerciseHTML(ex) {
-  return `<div class="exercise">${exerciseInner(ex)}</div>`;
+function exerciseHTML(ex, lastVal) {
+  return `<div class="exercise">${exerciseInner(ex, lastVal)}</div>`;
 }
 
 function renderTreino() {
@@ -424,6 +522,7 @@ function renderTreino() {
   view.innerHTML = '';
   const letter = workoutLetter(today());
   const restToday = !letter;
+  const logDates = scanLogDates();
 
   view.appendChild(h(`<p class="section-label">${restToday ? 'Hoje é descanso ativo' : 'Treino de hoje: ' + letter}</p>`));
 
@@ -435,7 +534,7 @@ function renderTreino() {
         <span>${esc(w.name)} <div class="acc-sub">${w.exercises.length} exercícios · descanso ${w.rest}</div></span>
         <span class="chev">›</span>
       </summary>
-      <div class="acc-body">${w.exercises.map(exerciseHTML).join('')}</div>
+      <div class="acc-body">${w.exercises.map(ex => exerciseHTML(ex, mostRecentLog(L + '::' + ex.name, logDates, null))).join('')}</div>
     </details>`);
     view.appendChild(det);
   }
@@ -452,7 +551,7 @@ function renderTreino() {
         <span>Abdômen — Protocolo ${P} <div class="acc-sub">descanso ${rd.rest}</div></span>
         <span class="chev">›</span>
       </summary>
-      <div class="acc-body">${rd.abs[P].map(exerciseHTML).join('')}</div>
+      <div class="acc-body">${rd.abs[P].map(ex => exerciseHTML(ex)).join('')}</div>
     </details>`));
   }
 
@@ -464,7 +563,7 @@ function renderTreino() {
         <span>Panturrilha — Protocolo ${P} <div class="acc-sub">descanso ${rd.rest} · alterne entre os protocolos</div></span>
         <span class="chev">›</span>
       </summary>
-      <div class="acc-body">${rd.calves[P].map(exerciseHTML).join('')}</div>
+      <div class="acc-body">${rd.calves[P].map(ex => exerciseHTML(ex)).join('')}</div>
     </details>`));
   }
 
@@ -474,7 +573,7 @@ function renderTreino() {
       <span>Antebraço <div class="acc-sub">todo descanso ativo</div></span>
       <span class="chev">›</span>
     </summary>
-    <div class="acc-body">${rd.forearm.map(exerciseHTML).join('')}</div>
+    <div class="acc-body">${rd.forearm.map(ex => exerciseHTML(ex)).join('')}</div>
   </details>`));
 
   view.appendChild(h('<p class="section-label">Como executar as séries</p>'));
@@ -609,14 +708,27 @@ function renderCheckin() {
 
   // ritmo: média das últimas 4 semanas
   let pace = '—';
+  let paceNum = 0;
   if (weights.length >= 2) {
     const cutoff = dayKey(addDays(today(), -28));
     const recent = weights.filter(w => w.d >= cutoff);
     if (recent.length >= 2) {
       const first = recent[0], lastR = recent[recent.length - 1];
       const days = (parseISO(lastR.d) - parseISO(first.d)) / 86400000;
-      if (days > 0) pace = ((first.kg - lastR.kg) / days * 7).toFixed(1).replace('.', ',') + ' kg/sem';
+      if (days > 0) {
+        paceNum = (first.kg - lastR.kg) / days * 7;
+        pace = paceNum.toFixed(1).replace('.', ',') + ' kg/sem';
+      }
     }
+  }
+
+  // projeção: se o ritmo real (últimas 4 semanas) se mantiver até 31/dez
+  let projectionText = '';
+  if (paceNum > 0) {
+    const weeksLeft = Math.max(0, (parseISO(goal.targetDate) - today()) / (7 * 86400000));
+    const projectedKg = Math.max(30, current - paceNum * weeksLeft);
+    const onTrack = projectedKg <= goal.targetKg + 0.5;
+    projectionText = `<span class="proj-dot ${onTrack ? 'ok' : 'warn'}"></span>No ritmo atual (${esc(pace)}), você chega a <b>~${esc(String(projectedKg.toFixed(1)).replace('.', ','))}kg</b> em 31/dez`;
   }
 
   view.appendChild(h(`<div class="stat-row">
@@ -651,6 +763,7 @@ function renderCheckin() {
   const chartCard = h('<div class="card chart-wrap"><h2>Evolução <span class="sub">· meta 80kg em 31/dez</span></h2></div>');
   chartCard.appendChild(buildChart(weights));
   chartCard.appendChild(h('<div class="chart-info"></div>'));
+  if (projectionText) chartCard.appendChild(h(`<div class="chart-projection">${projectionText}</div>`));
   view.appendChild(chartCard);
 
   // histórico
@@ -908,6 +1021,18 @@ function sanitizeStoreValue(k, v) {
     while (meals.length < 5) meals.push(false);
     const exDone = Array.isArray(v.exDone) ? v.exDone.slice(0, 8).map(Boolean) : [];
     return { meals, workout: Boolean(v.workout), extras: Boolean(v.extras), calf: Boolean(v.calf), exDone };
+  }
+  if (k.startsWith('shape:log:')) {
+    if (!DATE_RE.test(k.slice('shape:log:'.length)) || !v || typeof v !== 'object') return null;
+    const out = {};
+    for (const [ek, val] of Object.entries(v)) {
+      if (typeof ek !== 'string' || ek.length > 120 || !val || typeof val !== 'object') continue;
+      const weight = typeof val.weight === 'number' && val.weight >= 0 && val.weight <= 500 ? val.weight : null;
+      const reps = typeof val.reps === 'string' ? val.reps.slice(0, 40) : '';
+      if (weight == null && !reps) continue;
+      out[ek] = { weight, reps };
+    }
+    return out;
   }
   return null; // chave desconhecida: ignora (nunca grava fora do formato esperado)
 }
